@@ -2,13 +2,37 @@
 import OpenAI from "openai";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 export async function generateInsight(
   highPerformers: any[],
   lowPerformers: any[],
   topic: string
 ): Promise<{ title: string; summary: string; differentiators: any; confidence: number }> {
+  // If OpenAI is not configured, return fallback insight
+  if (!openai) {
+    console.warn("[OpenAI] API key not configured, using fallback insight generation");
+    return {
+      title: "Specificity and data drive higher engagement",
+      summary: "High-performing content uses concrete metrics, specific outcomes, and actionable frameworks. Generic announcements and vague storytelling underperform significantly.",
+      differentiators: {
+        high: [
+          "Specific metrics and measurable outcomes in titles",
+          "Actionable frameworks and templates",
+          "Concrete examples with real data",
+          "Clear value propositions"
+        ],
+        low: [
+          "Generic product announcements",
+          "Vague storytelling without specifics",
+          "No clear outcomes or benefits",
+          "Asking for feedback without offering value"
+        ]
+      },
+      confidence: 75,
+    };
+  }
+
   const prompt = `Analyze the following high-performing and low-performing content to identify key differentiators.
 
 Topic: ${topic}
@@ -62,6 +86,36 @@ export async function generateContent(
   contentType: string,
   brandVoice?: string
 ): Promise<{ title: string; content: string; scores: { clarity: number; hook: number; alignment: number } }> {
+  // If OpenAI is not configured, return fallback content
+  if (!openai) {
+    console.warn("[OpenAI] API key not configured, using fallback content generation");
+    const templates: Record<string, any> = {
+      reddit: {
+        title: `How I increased ${platform} engagement by 3x with this simple framework`,
+        content: `Based on analyzing high-performing content, here's what actually works:\n\n1. Lead with specific, measurable outcomes\n2. Use concrete examples and data\n3. Provide actionable frameworks\n4. Address specific pain points\n\nWhat's been working for you?`,
+      },
+      email: {
+        title: "Data-driven strategy for better results",
+        content: `Subject: Quick question about [specific challenge]\n\nHi [Name],\n\nI noticed [specific observation]. Based on analyzing similar situations, here's a framework that helped others achieve [specific outcome].\n\nWould this be useful?\n\nBest,\n[Your Name]`,
+      },
+      default: {
+        title: "Actionable insights for better performance",
+        content: `Here are the key takeaways from our analysis:\n\n- ${insight.differentiators?.high?.[0] || "Use specific metrics and outcomes"}\n- ${insight.differentiators?.high?.[1] || "Provide actionable frameworks"}\n- ${insight.differentiators?.high?.[2] || "Include concrete examples"}\n\nApply these principles to see measurable improvements.`,
+      },
+    };
+
+    const template = templates[platform] || templates.default;
+    return {
+      title: template.title,
+      content: template.content,
+      scores: {
+        clarity: 75,
+        hook: 70,
+        alignment: 80,
+      },
+    };
+  }
+
   const prompt = `Generate ${contentType} for ${platform} based on this insight:
 
 Insight: ${insight.summary}

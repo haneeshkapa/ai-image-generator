@@ -37,7 +37,7 @@ const menuItems = [
     icon: Sparkles,
   },
   {
-    title: "Content Review",
+    title: "Review",
     url: "/review",
     icon: FileText,
   },
@@ -50,6 +50,11 @@ const menuItems = [
     title: "Leads",
     url: "/leads",
     icon: Users,
+  },
+  {
+    title: "Settings",
+    url: "/settings",
+    icon: Settings,
   },
 ];
 
@@ -86,21 +91,6 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        
-        <SidebarGroup className="mt-auto">
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/settings"}>
-                  <Link href="/settings" data-testid="link-settings">
-                    <Settings className="h-4 w-4" />
-                    <span>Settings</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -24,11 +24,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         insightsGenerated: insights.length,
         contentApproved: approvedContent.length,
         leadsQualified: qualifiedLeads.length,
-        approvalRate: content.length > 0 ? (approvedContent.length / content.length) * 100 : 0,
+        approvalRate: content.length > 0 ? Math.round((approvedContent.length / content.length) * 100) : 0,
         avgResponseTime: 2.3,
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("[API] Dashboard stats error:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard stats", details: error.message });
     }
   });
 
@@ -116,17 +117,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { topicId } = req.body;
       
+      if (!topicId) {
+        return res.status(400).json({ error: "Topic ID is required" });
+      }
+      
       // Get content for this topic
       const allContent = await storage.getCrawledContentByTopic(topicId);
       
       if (allContent.length < 10) {
-        return res.status(400).json({ error: "Need at least 10 content items to generate insights" });
+        return res.status(400).json({ 
+          error: "Not enough data", 
+          message: `Need at least 10 content items to generate insights. Currently have ${allContent.length}.`
+        });
       }
 
       // Sort by engagement and split into high/low performers
       const sorted = allContent.sort((a, b) => b.engagementScore - a.engagementScore);
       const highPerformers = sorted.slice(0, Math.floor(sorted.length * 0.3));
       const lowPerformers = sorted.slice(-Math.floor(sorted.length * 0.3));
+
+      console.log(`[API] Generating insight for topic ${topicId} with ${highPerformers.length} high and ${lowPerformers.length} low performers`);
 
       // Generate insight using OpenAI
       const insightData = await generateInsight(highPerformers, lowPerformers, topicId);
@@ -143,9 +153,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confidence: insightData.confidence,
       });
 
+      console.log(`[API] Created insight ${insight.id} with ${insight.confidence}% confidence`);
       res.json(insight);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("[API] Insight generation error:", error);
+      res.status(500).json({ error: "Failed to generate insight", details: error.message });
     }
   });
 
@@ -163,11 +175,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { insightId, platform, contentType, topicId } = req.body;
       
+      if (!insightId || !platform || !contentType) {
+        return res.status(400).json({ 
+          error: "Missing required fields", 
+          message: "insightId, platform, and contentType are required"
+        });
+      }
+      
       // Get the insight
       const insight = await storage.getInsight(insightId);
       if (!insight) {
         return res.status(404).json({ error: "Insight not found" });
       }
+
+      console.log(`[API] Generating ${contentType} for ${platform} based on insight ${insightId}`);
 
       // Generate content using OpenAI
       const contentData = await generateContent(insight, platform, contentType);
@@ -175,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save to database
       const generated = await storage.createGeneratedContent({
         insightId,
-        topicId,
+        topicId: topicId || insight.topicId,
         platform,
         contentType,
         title: contentData.title,
@@ -186,9 +207,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "pending",
       });
 
+      console.log(`[API] Created content ${generated.id} with scores: clarity=${generated.clarityScore}, hook=${generated.hookStrength}, alignment=${generated.alignmentScore}`);
       res.json(generated);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("[API] Content generation error:", error);
+      res.status(500).json({ error: "Failed to generate content", details: error.message });
     }
   });
 
@@ -197,6 +220,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validated = insertFeedbackSchema.parse(req.body);
       const { contentId, action } = validated;
+
+      console.log(`[API] Processing ${action} feedback for content ${contentId}`);
 
       // Update content status based on action
       let newStatus = "pending";
@@ -209,22 +234,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save feedback
       const feedbackRecord = await storage.createFeedback(validated);
 
-      // If approved, potentially create a lead (simplified logic)
+      // If approved, potentially create a lead (simplified logic for demo)
       if (action === "approve") {
         const content = await storage.getGeneratedContent();
         const approvedContent = content.find(c => c.id === contentId);
         
         if (approvedContent && Math.random() > 0.7) { // 30% chance to generate lead
+          console.log(`[API] Creating demo lead for approved content ${contentId}`);
           const lead = await storage.createLead({
             contentId,
             email: `lead${Date.now()}@example.com`,
-            name: "Sample Lead",
+            name: "Demo Lead",
             source: approvedContent.platform,
             icpScore: Math.floor(Math.random() * 40) + 60, // 60-100
             qualificationStatus: "new",
           });
 
-          // Create in HubSpot
+          // Try to create in HubSpot (will gracefully fail if not connected)
           try {
             const hubspotId = await createHubSpotContact(
               lead.email!,
@@ -232,15 +258,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               lead.source!
             );
             await storage.updateLead(lead.id, { hubspotContactId: hubspotId });
+            console.log(`[API] Created HubSpot contact ${hubspotId}`);
           } catch (error) {
-            console.error("Failed to create HubSpot contact:", error);
+            console.warn("[API] HubSpot integration not available:", error);
           }
         }
       }
 
       res.json(feedbackRecord);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      console.error("[API] Feedback processing error:", error);
+      if (error.name === "ZodError") {
+        res.status(400).json({ error: "Invalid feedback data", details: error.errors });
+      } else {
+        res.status(500).json({ error: "Failed to process feedback", details: error.message });
+      }
     }
   });
 
