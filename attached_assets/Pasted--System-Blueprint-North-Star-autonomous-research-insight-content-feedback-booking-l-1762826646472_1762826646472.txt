@@ -1,0 +1,47 @@
+> System Blueprint
+
+  - North Star: autonomous “research → insight → content → feedback → booking” loop that hunts niche signals, explains why certain content wins, drafts platform-native posts, learns from your approvals, and
+  escalates only high-fit leads to calendar bookings.
+  - Core Modules: 1) data acquisition (crawlers, API connectors, manual upload intake), 2) analytics + insight layer, 3) content generation/orchestration, 4) human feedback capture + preference learning, 5)
+  CRM/booking automation, 6) observability + governance.
+
+  Data Acquisition
+
+  - Sources: Reddit (pushshift/API), YouTube Data API + unofficial engagement scrapes, X/TikTok public metrics, competitor blogs/newsletters (RSS), industry forums, your internal call transcripts.
+  - Tech stack: Python micro-crawlers scheduled via Airflow/Temporal; use Playwright for dynamic pages. Store raw JSON/text in S3 + metadata in Postgres/ClickHouse. Tag each artifact with topic, platform,
+  creator, engagement metrics.
+  - Controls: per-site rate limiting, rotating residential proxies, ToS-compliant API usage. Maintain a registry of consented sources; allow manual ingestion via Slack/Notion dropbox.
+
+  Insight Engine
+
+  - Feature extraction: use OpenAI/GPT-4.1 or Llama-3 fine-tuned embeddings to capture semantic themes; compute engagement features (CTR, watch rate proxies), stylistic traits (hook length, sentiment,
+  pacing).
+  - Comparative analysis: pair high-performers vs underperformers within topic buckets; run SHAP-esque heuristics to highlight differentiators (hook sentiment, visual CTA, length, posting cadence). Persist
+  rationale objects so generators can cite “why this mattered.”
+  - Topic intelligence: hierarchical clustering (HDBSCAN + UMAP) over embeddings to surface emergent niches; attach TAM/prospect fit scores based on your ICP definitions.
+
+  Content Generator
+
+  - Prompt architecture: system template includes brand voice, ICP persona, strategic goal, insight references; tool functions to pull latest exemplars and metrics; post-processor enforces platform rules
+  (char limits, hashtags, CTA variations).
+  - Modalities: text posts, email scripts, YouTube outlines, short-form video storyboards. For visuals, integrate image prompt generator or hook Midjourney/Runway via API later.
+  - Evaluation: automatic scoring using a secondary LLM acting as critic (checks clarity, hook strength, alignment with viral traits) before human review; log critic output for training.
+
+  Human Feedback Loop
+
+  - Interface: lightweight web dashboard or Slack bot delivering each draft with insight summary + CTA buttons (approve, revise, reject) plus free-text rationale.
+  - Learning: store feedback as preference data; train a reward model or apply DPO-style fine-tuning periodically (weekly) to bias generation toward approved traits. Track per-user calibration to reflect
+  different reviewers.
+  - Governance: version posts, keep audit logs of who approved what, allow rollback and A/B testing flags.
+
+  Research Agent Enhancements
+
+  - Question answering: enable analyst-style prompts (“why did X go viral?”) that trigger chain-of-thought retrieval over stored artifacts. Use RAG with vector DB (Weaviate/Pinecone/Qdrant) to cite evidence.
+  - Hypothesis testing: automatically spin small experiments—e.g., generate two hooks targeting different pain points—route to limited ad spend and feed back performance stats.
+
+  CRM & Booking Layer
+
+  - Integration: bi-directional sync with HubSpot/Salesforce or Cal.com. Content posts embed tracking links; when inbound replies hit threshold (sentiment + keywords), auto-create lead record and trigger
+  booking suggestions.
+  - Qualification logic: rule-based first (ICP score, engagement type), later ML propensity model. Booking agent offers time slots via API, sends reminders, and updates lifecycle stages.
+
