@@ -27,6 +27,17 @@ export const crawlerConfigs = pgTable("crawler_configs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const crawlerRuns = pgTable("crawler_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  crawlerConfigId: varchar("crawler_config_id").references(() => crawlerConfigs.id).notNull(),
+  status: text("status").notNull(),
+  itemsIngested: integer("items_ingested").default(0),
+  error: text("error"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  metadata: jsonb("metadata"),
+});
+
 // Crawled content from various sources
 export const crawledContent = pgTable("crawled_content", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -78,10 +89,15 @@ export const generatedContent = pgTable("generated_content", {
   topicId: varchar("topic_id").references(() => topics.id),
   
   platform: text("platform").notNull(), // reddit, youtube, email, twitter
-  contentType: text("content_type").notNull(), // text_post, email_script, video_outline
+  contentType: text("content_type").notNull(), // text_post, email_script, video_outline, image, video
   
   title: text("title"),
   content: text("content").notNull(),
+  
+  // Media generation fields
+  mediaUrl: text("media_url"), // URL to generated image/video
+  mediaType: text("media_type"), // image, video, null for text content
+  mediaMetadata: jsonb("media_metadata"), // generation params, dimensions, duration, etc
   
   // AI critic evaluation
   clarityScore: integer("clarity_score"), // 0-100
@@ -121,9 +137,36 @@ export const leads = pgTable("leads", {
   source: text("source"), // which content/platform generated this lead
   icpScore: integer("icp_score").default(0), // 0-100
   qualificationStatus: text("qualification_status").default("new").notNull(), // new, qualified, contacted, booked
+  bookingUrl: text("booking_url"),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
   contactedAt: timestamp("contacted_at"),
+});
+
+export const settings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  role: text("role").default("admin").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const userApiKeys = pgTable("user_api_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  service: text("service").notNull(), // openai, youtube, hubspot, reddit, calcom
+  encryptedKey: text("encrypted_key").notNull(),
+  keyName: text("key_name"), // optional friendly name
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Relations
@@ -140,6 +183,14 @@ export const crawlerConfigsRelations = relations(crawlerConfigs, ({ one, many })
     references: [topics.id],
   }),
   crawledContent: many(crawledContent),
+  runs: many(crawlerRuns),
+}));
+
+export const crawlerRunsRelations = relations(crawlerRuns, ({ one }) => ({
+  crawlerConfig: one(crawlerConfigs, {
+    fields: [crawlerRuns.crawlerConfigId],
+    references: [crawlerConfigs.id],
+  }),
 }));
 
 export const crawledContentRelations = relations(crawledContent, ({ one }) => ({
@@ -188,14 +239,29 @@ export const leadsRelations = relations(leads, ({ one }) => ({
   }),
 }));
 
+export const usersRelations = relations(users, ({ many }) => ({
+  apiKeys: many(userApiKeys),
+}));
+
+export const userApiKeysRelations = relations(userApiKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [userApiKeys.userId],
+    references: [users.id],
+  }),
+}));
+
 // Insert schemas
 export const insertTopicSchema = createInsertSchema(topics).omit({ id: true, createdAt: true });
 export const insertCrawlerConfigSchema = createInsertSchema(crawlerConfigs).omit({ id: true, createdAt: true, lastCrawledAt: true });
+export const insertCrawlerRunSchema = createInsertSchema(crawlerRuns).omit({ id: true, startedAt: true, finishedAt: true });
 export const insertCrawledContentSchema = createInsertSchema(crawledContent).omit({ id: true, createdAt: true });
 export const insertInsightSchema = createInsertSchema(insights).omit({ id: true, createdAt: true });
 export const insertGeneratedContentSchema = createInsertSchema(generatedContent).omit({ id: true, createdAt: true, reviewedAt: true });
 export const insertFeedbackSchema = createInsertSchema(feedback).omit({ id: true, createdAt: true });
 export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true, contactedAt: true });
+export const insertSettingSchema = createInsertSchema(settings).omit({ updatedAt: true });
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertUserApiKeySchema = createInsertSchema(userApiKeys).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Types
 export type Topic = typeof topics.$inferSelect;
@@ -218,3 +284,15 @@ export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 
 export type Lead = typeof leads.$inferSelect;
 export type InsertLead = z.infer<typeof insertLeadSchema>;
+
+export type CrawlerRun = typeof crawlerRuns.$inferSelect;
+export type InsertCrawlerRun = z.infer<typeof insertCrawlerRunSchema>;
+
+export type Setting = typeof settings.$inferSelect;
+export type InsertSetting = z.infer<typeof insertSettingSchema>;
+
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
+export type UserApiKey = typeof userApiKeys.$inferSelect;
+export type InsertUserApiKey = z.infer<typeof insertUserApiKeySchema>;

@@ -1,10 +1,11 @@
 // Referenced from javascript_database blueprint
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
+import 'dotenv/config';
+import { Pool as NeonPool, neonConfig } from '@neondatabase/serverless';
+import { Pool as PgPool } from 'pg';
+import { drizzle as drizzleNeon } from 'drizzle-orm/neon-serverless';
+import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import ws from "ws";
 import * as schema from "@shared/schema";
-
-neonConfig.webSocketConstructor = ws;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -12,5 +13,19 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle({ client: pool, schema });
+// Use standard pg driver for local development, Neon for production
+const isNeon = process.env.DATABASE_URL.includes('neon.tech');
+
+let pool: any;
+let db: any;
+
+if (isNeon) {
+  neonConfig.webSocketConstructor = ws;
+  pool = new NeonPool({ connectionString: process.env.DATABASE_URL });
+  db = drizzleNeon({ client: pool, schema });
+} else {
+  pool = new PgPool({ connectionString: process.env.DATABASE_URL });
+  db = drizzlePg({ client: pool, schema });
+}
+
+export { pool, db };

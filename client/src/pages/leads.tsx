@@ -17,6 +17,9 @@ export default function Leads() {
   const { data: leads, isLoading } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
   });
+  const { data: qualificationRules } = useQuery<{ approvalThreshold: number }>({
+    queryKey: ["/api/settings/qualification"],
+  });
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -28,6 +31,20 @@ export default function Leads() {
         title: "Lead updated",
         description: "Lead status changed successfully",
       });
+    },
+  });
+
+  const bookingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/leads/${id}/book`, {});
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      toast({ title: "Meeting booked", description: "Lead marked as booked" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Booking failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -113,6 +130,15 @@ export default function Leads() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Approval Threshold</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-semibold font-mono">{qualificationRules?.approvalThreshold ?? 75}</div>
+            <p className="text-xs text-muted-foreground">Score required to auto-create leads</p>
+          </CardContent>
+        </Card>
       </div>
 
       {isLoading ? (
@@ -188,6 +214,17 @@ export default function Leads() {
                         Contacted {new Date(lead.contactedAt).toLocaleDateString()}
                       </span>
                     )}
+                    {lead.bookingUrl && (
+                      <a
+                        href={lead.bookingUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-primary"
+                      >
+                        <Calendar className="h-3 w-3" />
+                        Join link
+                      </a>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     {lead.qualificationStatus === "new" && (
@@ -221,6 +258,17 @@ export default function Leads() {
                       >
                         <Calendar className="h-3 w-3 mr-1" />
                         Mark Booked
+                      </Button>
+                    )}
+                    {lead.qualificationStatus === "qualified" && (
+                      <Button
+                        size="sm"
+                        onClick={() => bookingMutation.mutate(lead.id)}
+                        disabled={bookingMutation.isPending}
+                        data-testid={`button-booking-${lead.id}`}
+                      >
+                        <Calendar className="h-3 w-3 mr-1" />
+                        Book Meeting
                       </Button>
                     )}
                     <Button

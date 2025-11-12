@@ -1,11 +1,7 @@
 import { 
-  Home, 
-  Radio, 
-  Sparkles, 
-  FileText, 
-  BarChart3, 
-  Users, 
-  Settings 
+  Wand2,
+  Settings,
+  Sparkles
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -22,34 +18,9 @@ import {
 
 const menuItems = [
   {
-    title: "Dashboard",
+    title: "Content Generator",
     url: "/",
-    icon: Home,
-  },
-  {
-    title: "Crawlers",
-    url: "/crawlers",
-    icon: Radio,
-  },
-  {
-    title: "Insights",
-    url: "/insights",
-    icon: Sparkles,
-  },
-  {
-    title: "Review",
-    url: "/review",
-    icon: FileText,
-  },
-  {
-    title: "Analytics",
-    url: "/analytics",
-    icon: BarChart3,
-  },
-  {
-    title: "Leads",
-    url: "/leads",
-    icon: Users,
+    icon: Wand2,
   },
   {
     title: "Settings",

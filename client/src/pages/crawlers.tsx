@@ -6,15 +6,25 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Radio, Pause, Play, Trash2, Settings2, ExternalLink } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Plus, Radio, Pause, Play, Trash2, Settings2, ExternalLink, Sparkles, Search, Loader2 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { CrawlerConfig } from "@shared/schema";
+import { Checkbox } from "@/components/ui/checkbox";
+import type { CrawlerConfig, CrawlerRun } from "@shared/schema";
 
 export default function Crawlers() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [aiSearchOpen, setAiSearchOpen] = useState(false);
+  const [runsDialogOpen, setRunsDialogOpen] = useState(false);
+  const [selectedCrawler, setSelectedCrawler] = useState<CrawlerConfig | null>(null);
+  const [runs, setRuns] = useState<CrawlerRun[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchPlatforms, setSearchPlatforms] = useState<string[]>(["reddit"]);
+  const [autoSave, setAutoSave] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const { toast } = useToast();
 
   const { data: crawlers, isLoading } = useQuery<CrawlerConfig[]>({
@@ -83,6 +93,49 @@ export default function Crawlers() {
     return colors[platform.toLowerCase()] || "bg-gray-500";
   };
 
+  const handleAISearch = async () => {
+    if (!searchQuery.trim()) {
+      toast({ title: "Error", description: "Please enter a search query", variant: "destructive" });
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchResults([]);
+
+    try {
+      const response = await apiRequest("POST", "/api/content/ai-search", {
+        query: searchQuery,
+        platforms: searchPlatforms,
+        autoSave,
+      });
+      
+      const data = await response.json();
+      setSearchResults(data.results || []);
+      
+      toast({ 
+        title: "Search complete", 
+        description: data.message || `Found ${data.results?.length || 0} results` 
+      });
+    } catch (error: any) {
+      toast({ title: "Search failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const loadRuns = async (crawler: CrawlerConfig) => {
+    setSelectedCrawler(crawler);
+    setRunsDialogOpen(true);
+    try {
+      const res = await apiRequest("GET", `/api/crawlers/${crawler.id}/runs?limit=20`);
+      const payload = await res.json();
+      setRuns(payload);
+    } catch (error: any) {
+      toast({ title: "Failed to load runs", description: error.message, variant: "destructive" });
+      setRunsDialogOpen(false);
+    }
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -92,7 +145,108 @@ export default function Crawlers() {
             Configure and manage content acquisition from multiple sources
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <div className="flex gap-2">
+          <Dialog open={aiSearchOpen} onOpenChange={setAiSearchOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Sparkles className="h-4 w-4 mr-2" />
+                AI Search
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>AI-Powered Content Search</DialogTitle>
+                <DialogDescription>
+                  Search Reddit and other platforms without API credentials using AI
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="search-query">Search Query</Label>
+                  <Input
+                    id="search-query"
+                    placeholder="e.g., SaaS marketing strategies"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Platforms</Label>
+                  <div className="flex gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="platform-reddit"
+                        checked={searchPlatforms.includes("reddit")}
+                        onCheckedChange={(checked) => {
+                          setSearchPlatforms(prev =>
+                            checked
+                              ? [...prev, "reddit"]
+                              : prev.filter(p => p !== "reddit")
+                          );
+                        }}
+                      />
+                      <label htmlFor="platform-reddit" className="text-sm">
+                        Reddit
+                      </label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="platform-youtube"
+                        checked={searchPlatforms.includes("youtube")}
+                        onCheckedChange={(checked) => {
+                          setSearchPlatforms(prev =>
+                            checked
+                              ? [...prev, "youtube"]
+                              : prev.filter(p => p !== "youtube")
+                          );
+                        }}
+                      />
+                      <label htmlFor="platform-youtube" className="text-sm">
+                        YouTube
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="auto-save"
+                    checked={autoSave}
+                    onCheckedChange={(checked) => setAutoSave(checked as boolean)}
+                  />
+                  <label htmlFor="auto-save" className="text-sm">
+                    Automatically save results as crawled content
+                  </label>
+                </div>
+
+                {searchResults.length > 0 && (
+                  <div className="max-h-60 overflow-y-auto space-y-2 border rounded-lg p-4">
+                    <p className="text-sm font-medium mb-2">Results ({searchResults.length})</p>
+                    {searchResults.map((result, i) => (
+                      <div key={i} className="text-sm p-2 bg-muted rounded">
+                        <p className="font-medium">{result.title}</p>
+                        <p className="text-xs text-muted-foreground">{result.platform} • {result.author}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAiSearchOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAISearch} disabled={isSearching || !searchQuery.trim()}>
+                  {isSearching && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {isSearching ? "Searching..." : "Search"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-crawler">
               <Plus className="h-4 w-4 mr-2" />
@@ -166,6 +320,7 @@ export default function Crawlers() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {isLoading ? (
@@ -252,6 +407,13 @@ export default function Crawlers() {
                     <Trash2 className="h-3 w-3 mr-1" />
                     Delete
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => loadRuns(crawler)}
+                  >
+                    View Runs
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -272,6 +434,37 @@ export default function Crawlers() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={runsDialogOpen} onOpenChange={setRunsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Recent Runs</DialogTitle>
+            <DialogDescription>
+              {selectedCrawler ? selectedCrawler.name : "Crawler"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-[400px] overflow-y-auto">
+            {runs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No runs recorded yet.</p>
+            ) : (
+              runs.map((run) => (
+                <div key={run.id} className="flex items-center justify-between border rounded-md p-3">
+                  <div>
+                    <p className="text-sm font-medium">{run.status}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(run.startedAt!).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="text-xs text-muted-foreground text-right">
+                    <p>{run.itemsIngested} items</p>
+                    {run.error && <p className="text-destructive max-w-[240px] truncate">{run.error}</p>}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -168,3 +168,97 @@ Provide JSON response with:
 }
 
 export { openai };
+
+export async function generateImage(
+  prompt: string,
+  size: "1024x1024" | "1792x1024" | "1024x1792" = "1024x1024",
+  quality: "standard" | "hd" = "standard"
+): Promise<{ url: string; revisedPrompt?: string }> {
+  if (!openai) {
+    console.warn("[OpenAI] API key not configured, cannot generate images");
+    throw new Error("OpenAI API key not configured");
+  }
+
+  try {
+    const response = await openai.images.generate({
+      model: "dall-e-3",
+      prompt,
+      size,
+      quality,
+      n: 1,
+    });
+
+    if (!response.data || !response.data[0]) {
+      throw new Error("No image data returned from API");
+    }
+
+    return {
+      url: response.data[0].url || "",
+      revisedPrompt: response.data[0].revised_prompt,
+    };
+  } catch (error: any) {
+    console.error("Failed to generate image:", error);
+    throw new Error("Failed to generate image: " + error.message);
+  }
+}
+
+export async function generateVideoPrompt(
+  insight: any,
+  platform: string,
+  duration: number = 30,
+  style?: string
+): Promise<{ script: string; scenes: any[]; voiceoverText: string }> {
+  if (!openai) {
+    console.warn("[OpenAI] API key not configured, using fallback video prompt generation");
+    return {
+      script: `Create a ${duration}-second video about: ${insight.summary}`,
+      scenes: [
+        { duration: 10, description: "Opening hook with key insight", text: insight.title },
+        { duration: 15, description: "Main content explanation", text: insight.summary },
+        { duration: 5, description: "Call to action", text: "Learn more" },
+      ],
+      voiceoverText: `${insight.title}. ${insight.summary}. Want to learn more? Click the link below.`,
+    };
+  }
+
+  const prompt = `Create a ${duration}-second video script for ${platform} based on this insight:
+
+Insight: ${insight.summary}
+Key Success Factors: ${JSON.stringify(insight.differentiators?.high || [])}
+${style ? `Visual Style: ${style}` : ''}
+
+Generate a JSON response with:
+- script: Full video script with timing
+- scenes: Array of scene objects with duration (seconds), description, and text overlay
+- voiceoverText: Complete voiceover narration
+
+Keep it engaging and optimized for ${platform} with hooks in the first 3 seconds.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: "You are a video content strategist. Create engaging video scripts optimized for short-form social media.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_completion_tokens: 4096,
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    return {
+      script: result.script || "",
+      scenes: result.scenes || [],
+      voiceoverText: result.voiceoverText || "",
+    };
+  } catch (error: any) {
+    console.error("Failed to generate video prompt:", error);
+    throw new Error("Failed to generate video prompt: " + error.message);
+  }
+}
