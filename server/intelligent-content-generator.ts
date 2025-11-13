@@ -2,8 +2,12 @@ import OpenAI from "openai";
 import { storage } from "./storage";
 
 // OpenRouter API for MiniMax-M2 (free model)
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
+if (!OPENROUTER_API_KEY) {
+  console.warn("[Intelligent Generator] OPENROUTER_API_KEY not set in environment");
+}
 
 // Initialize OpenRouter client
 const openrouter = new OpenAI({
